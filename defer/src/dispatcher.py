@@ -8,8 +8,8 @@ import queue
 import numpy as np
 import tensorflow as tf
 
-from defer.src.dag_util import *
-from defer.src.node_state import socket_recv, socket_send
+from dag_util import *
+from node_state import socket_recv, socket_send
 
 import lz4.frame
 import zfpy
