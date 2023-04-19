@@ -32,7 +32,6 @@ start = time.time()
 def print_result(q):
     res_count = 0
     while (time.time() - start) < run:
-        print("fuck")
         res = q.get()
         print("fd")
         res_count += 1
