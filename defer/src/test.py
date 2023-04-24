@@ -1,15 +1,15 @@
 from dispatcher import DEFER
 import threading
+import tensorflow as tf
 import keras.applications
 from keras.applications import ResNet50
 from keras.applications.resnet import preprocess_input, decode_predictions
 from keras.preprocessing import image
-import tensorflow as tf
 import numpy as np
 import queue
 import time
 
-numNodes = 3
+numNodes = 2
 computeNodes = ["192.168.0.20","192.168.0.21","192.168.1.20"]
 defer = DEFER(computeNodes)
 
@@ -17,7 +17,7 @@ model = ResNet50(weights='imagenet', include_top=True)
 # Depending on the number of compute nodes, use different number of partitions
 # "part_at" is where the graph is split, so there should be one less element in this
 # list than the number of partitions you want
-part_at = ["conv3_block1_1_conv"]
+part_at = ["conv3_block4_out"]
 img_path = 'pizza.jpeg'
 img = tf.keras.utils.load_img(img_path, target_size=(224, 224))
 x = tf.keras.utils.img_to_array(img)

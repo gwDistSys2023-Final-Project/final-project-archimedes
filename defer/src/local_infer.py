@@ -2,7 +2,6 @@
 
 from keras.applications import ResNet50
 from keras.applications.resnet import preprocess_input
-from keras.preprocessing import image
 import numpy as np
 import time
 import tensorflow as tf

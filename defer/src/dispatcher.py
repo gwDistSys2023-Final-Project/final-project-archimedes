@@ -15,6 +15,7 @@ import lz4.frame
 import zfpy
 import time
 
+
 # 5000 is data, 5001 is model architecture, 5002 is weights
 
 class DEFER:
@@ -22,24 +23,22 @@ class DEFER:
         self.computeNodes = computeNodes
         self.dispatchIP = socket.gethostbyname(socket.gethostname())
         self.chunk_size = 512 * 1000
-        self.graph = tf.compat.v1.get_default_graph()
-    
+
     def _partition(self, model: tf.keras.Model, layer_parts: List[str]) -> List[tf.keras.Model]:
-        with self.graph.as_default():
-            models = []
-            for p in range(len(layer_parts) + 1):
-                if p == 0:
-                    start = model.input._keras_history[0].name
-                else:
-                    start = layer_parts[p-1]
-                if p == len(layer_parts):
-                    print(model.output)
-                    end = model.output._keras_history[0].name
-                else:
-                    end = layer_parts[p]
-                part = construct_model(model, start, end, part_name=f"part{p+1}")
-                models.append(part)
-            return models
+        models = []
+        for p in range(len(layer_parts) + 1):
+            if p == 0:
+                start = model.input.name
+            else:
+                start = layer_parts[p - 1]
+            if p == len(layer_parts):
+                # print(model.output)
+                end = model.output.name
+            else:
+                end = layer_parts[p]
+            part = construct_model(model, start, end, part_name=f"part{p + 1}")
+            models.append(part)
+        return models
 
     def _dispatchModels(self, models: list, nodeIPs: List[str]) -> None:
         for i in range(len(models)):
@@ -53,7 +52,7 @@ class DEFER:
             else:
                 # Reached the end of the nodes, the last node needs to point back to the dispatcher
                 nextNode = self.dispatchIP
-            
+
             self._send_weights(models[i].get_weights(), weights_sock, self.chunk_size)
             model_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             model_sock.setblocking(0)
@@ -61,7 +60,7 @@ class DEFER:
             model_sock.connect((nodeIPs[i], 5001))
             socket_send(model_json.encode(), model_sock, self.chunk_size)
             socket_send(nextNode.encode(), model_sock, chunk_size=1)
-            select.select([model_sock], [], []) # Waiting for acknowledgement
+            select.select([model_sock], [], [])  # Waiting for acknowledgement
             model_sock.recv(1)
 
     def _send_weights(self, weights: List, sock: socket.socket, chunk_size: int):
@@ -72,29 +71,33 @@ class DEFER:
                 sent = sock.send(size_bytes)
                 size_bytes = size_bytes[sent:]
             except socket.error as e:
-                    if e.errno != socket.EAGAIN:
-                        raise e
-                    select.select([], [sock], [])
+                if e.errno != socket.EAGAIN:
+                    raise e
+                select.select([], [sock], [])
         for w_arr in weights:
-                as_bytes = self._comp(w_arr)
-                socket_send(as_bytes, sock, chunk_size)
+            as_bytes = self._comp(w_arr)
+            socket_send(as_bytes, sock, chunk_size)
+
     def _comp(self, arr):
         return lz4.frame.compress(zfpy.compress_numpy(arr))
+
     def _decomp(self, byts):
         return zfpy.compress_numpy(lz4.frame.decompress(byts))
+
     def _startDistEdgeInference(self, input: queue.Queue):
         data_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         data_sock.connect((self.computeNodes[0], 5000))
         data_sock.setblocking(0)
-        
+
         while True:
-            model_input = input.get()
+            model_input = input
+
             out = self._comp(model_input)
             socket_send(out, data_sock, self.chunk_size)
 
     def _result_server(self, output: queue.Queue):
         data_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM) 
-        data_server.bind(("0.0.0.0", 5000)) 
+        data_server.bind(("127.0.0.1", 10000))
         data_server.listen(1) 
         data_cli = data_server.accept()[0]
         data_cli.setblocking(0)
