@@ -97,7 +97,7 @@ class DEFER:
 
     def _result_server(self, output: queue.Queue):
         data_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM) 
-        data_server.bind(("127.0.0.1", 10000))
+        data_server.bind(("0.0.0.0", 5000))
         data_server.listen(1) 
         data_cli = data_server.accept()[0]
         data_cli.setblocking(0)

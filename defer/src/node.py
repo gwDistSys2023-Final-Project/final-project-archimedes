@@ -32,11 +32,11 @@ class Node:
         while (node_state.weights == ""): # Waiting for weights to be sent on other thread
             time.sleep(5)
         part.set_weights(node_state.weights)
-        id = socket.gethostbyname(socket.gethostname())
+        # id = socket.gethostbyname(socket.gethostname())
         md = part
         md._make_predict_function()
         node_state.model = md
-        tf.keras.utils.plot_model(md, f"model_{id}.png")
+        # tf.keras.utils.plot_model(md, f"model_{id}.png")
         node_state.next_node = next_node.decode()
         select.select([], [model_cli], [])
         model_cli.send(b'\x06')
