@@ -34,7 +34,7 @@ class Node:
         part.set_weights(node_state.weights)
         # id = socket.gethostbyname(socket.gethostname())
         md = part
-        md._make_predict_function()
+        md.make_predict_function()
         node_state.model = md
         # tf.keras.utils.plot_model(md, f"model_{id}.png")
         node_state.next_node = next_node.decode()
@@ -87,7 +87,7 @@ class Node:
 
         while True:
             data = bytes(socket_recv(data_cli, chunk_size))
-            inpt = zfpy.decompress_numpy(data)
+            inpt = self._decomp(data)
             to_send.put(inpt)
 
     def _data_client(self, node_state: NodeState, to_send: Queue):
@@ -102,8 +102,7 @@ class Node:
         
         while True:
             inpt = to_send.get()
-            with graph.as_default():
-                output = model.predict(inpt)
+            output = model.predict(inpt)
             out = self._comp(output)
             socket_send(out, next_node_client, chunk_size)
 
