@@ -21,7 +21,7 @@ import time
 class DEFER:
     def __init__(self, computeNodes) -> None:
         self.computeNodes = computeNodes
-        self.dispatchIP = socket.gethostbyname(socket.gethostname())
+        self.dispatchIP = "172.16.0.254" # Replace with machine virtual interface ip
         self.chunk_size = 512 * 1000
 
     def _partition(self, model: tf.keras.Model, layer_parts: List[str]) -> List[tf.keras.Model]:
@@ -52,7 +52,6 @@ class DEFER:
             else:
                 # Reached the end of the nodes, the last node needs to point back to the dispatcher
                 nextNode = self.dispatchIP
-
             self._send_weights(models[i].get_weights(), weights_sock, self.chunk_size)
             model_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             model_sock.setblocking(0)
@@ -82,7 +81,7 @@ class DEFER:
         return lz4.frame.compress(zfpy.compress_numpy(arr))
 
     def _decomp(self, byts):
-        return zfpy.compress_numpy(lz4.frame.decompress(byts))
+        return zfpy.decompress_numpy(lz4.frame.decompress(byts))
 
     def _startDistEdgeInference(self, input: queue.Queue):
         data_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -90,8 +89,7 @@ class DEFER:
         data_sock.setblocking(0)
 
         while True:
-            model_input = input
-
+            model_input = input.get()
             out = self._comp(model_input)
             socket_send(out, data_sock, self.chunk_size)
 

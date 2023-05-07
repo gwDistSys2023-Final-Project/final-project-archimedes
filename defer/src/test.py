@@ -10,7 +10,7 @@ import queue
 import time
 
 numNodes = 2
-computeNodes = ["172.16.0.1","172.16.0.3"]
+computeNodes = ["172.16.0.2","172.16.0.3"]
 defer = DEFER(computeNodes)
 
 model = ResNet50(weights='imagenet', include_top=True)
@@ -46,9 +46,8 @@ b = threading.Thread(target=print_result, args=(output_q,))
 a.start()
 b.start()
 
-for i in range(1000):
+for i in range(10):
     # Whatever input you want
     input_q.put(x)
 
 b.join()
-
