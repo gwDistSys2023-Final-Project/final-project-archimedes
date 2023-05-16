@@ -4,6 +4,7 @@ import socket
 import threading
 from typing import List
 import queue
+import netron
 
 import numpy as np
 import tensorflow as tf
@@ -19,14 +20,66 @@ class DistributedInference:
 
     def __init__(self, workerNodeIPs) -> None:
     
-        # Replace self.masterIP with machine virtual interface ip
+        # Replace self.masterIP with machine virtual interface ip from CORE
         self.workerNodeIPs = workerNodeIPs
         self.masterIP = "172.16.0.254" 
         self.chunk_size = 512 * 1000
+        
+        # Stores Total Overhead
+        self.comp_time = 0
 
-
-    # This function partitions each model into sub-models specified in the layers argument
+    # This function partitions each model into sub-models manually
     def _partition(self, model, layers):
+        models = []
+        
+        input_tensor = model.input
+        output_tensor = model.output
+
+        submodel1 = tf.keras.models.Sequential(model.layers[:4])
+        output1 = submodel1(input_tensor)
+        #submodel1.save("submodel_1.h5")
+        #netron.start("submodel_1.h5")
+
+        input2 = tf.keras.layers.Input(shape=output1.shape[1:])
+        submodel2 = tf.keras.models.Sequential(model.layers[4:8])
+        output2 = submodel2(input2)
+        #submodel2.save("submodel_2.h5")
+        #netron.start("submodel_2.h5")
+     
+        input3 = tf.keras.layers.Input(shape=output2.shape[1:])
+        submodel3 = tf.keras.models.Sequential(model.layers[8:12])
+        output3 = submodel3(input3)
+        #submodel3.save("submodel_3.h5")
+       #netron.start("submodel_3.h5")
+        
+        input4 = tf.keras.layers.Input(shape=output3.shape[1:])
+        submodel4 = tf.keras.models.Sequential(model.layers[12:16])
+        output4 = submodel4(input4)
+
+        input5 = tf.keras.layers.Input(shape=output4.shape[1:])
+        submodel5 = tf.keras.models.Sequential(model.layers[16:])
+        output5 = submodel5(input5)
+
+        '''
+        input6 = tf.keras.layers.Input(shape=output5.shape[1:])
+        submodel6 = tf.keras.models.Sequential(model.layers[17:])
+        output6 = submodel6(input6)                     
+        '''
+        models.append(submodel1)
+        models.append(submodel2)
+        models.append(submodel3)  
+
+        models.append(submodel4)
+
+        models.append(submodel5)
+
+        '''
+        models.append(submodel6)                   
+        '''
+        return models
+        
+      # This function partitions each model into sub-models specified in the layers argument
+    def _partition_by_layers(self, model, layers):
         models = []
        
         for pIdx in range(len(layers)+1):
@@ -42,7 +95,8 @@ class DistributedInference:
             print(sub_model, ": ", pIdx)
             models.append(sub_model)
   
-        return models
+        return models    
+    
         
     # This function traverses and returns a clone of the input graph (model)
     def _traverse(self, model, name, start, part_name,inpt):
@@ -109,10 +163,15 @@ class DistributedInference:
                 socket_send(self._compressData(weight_array), connection, buffer_size)
 
     def _compressData(self, arr):
-        return lz4.frame.compress(zfpy.compress_numpy(arr))
+        res=lz4.frame.compress(zfpy.compress_numpy(arr))
+            
+        return res
 
     def _decompressData(self, byts):
-        return zfpy.decompress_numpy(lz4.frame.decompress(byts))
+
+        res=zfpy.decompress_numpy(lz4.frame.decompress(byts))
+   
+        return res
         
     def _infer(self, input):
     
@@ -122,7 +181,11 @@ class DistributedInference:
 
         while True:
             model_input = input.get()
+            start=time.time()
             out = self._compressData(model_input)
+            self.comp_time += (time.time() - start)
+            print("overhead so far: ",self.comp_time)
+     
             socket_send(out, data_sock, self.chunk_size)
 
     def _result_server(self, output):
@@ -135,7 +198,11 @@ class DistributedInference:
 
         while True:
             data = bytes(socket_recv(client, self.chunk_size))
-            output.put(self._decompressData(data))
+            start = time.time()
+            data_decomp = self._decompressData(data)  
+            self.comp_time += (time.time()-start)
+            print("overhead so far: ", self.comp_time)
+            output.put(data_decomp)
 
     def start(self, model, partition_layers, ip_stream, op_stream):
     

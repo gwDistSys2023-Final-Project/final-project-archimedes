@@ -27,11 +27,11 @@ class WorkerNode:
         weights_cli = weights_server.accept()[0]
         weights_cli.setblocking(0)
         
-        model_weights = self._retrieve_weights(weights_cli, chunk_size)
+        model_weights = self._retrieve_weights(weights_cli, chunk_size,worker_state.next_node)
         worker_state.weights = model_weights
         weights_server.close()
 
-    def _retrieve_weights(self, connection, buffer_size):
+    def _retrieve_weights(self, connection, buffer_size,next_node):
         remaining_size = 8
         byte_array = bytearray()
     
@@ -50,18 +50,25 @@ class WorkerNode:
         weights_list = []
         for _ in range(array_length):
             received_bytes = bytes(socket_recv(connection, buffer_size))
-            weights_list.append(self._decompressData(received_bytes))
+            weights, delta = self._decompressData(received_bytes,next_node)
+            weights_list.append(weights)
 
         return weights_list
 
         
-    def _compressData(self, arr):
-        return lz4.frame.compress(zfpy.compress_numpy(arr))
+    def _compressData(self, arr,next_node):
+        start=time.time()
+        res=lz4.frame.compress(zfpy.compress_numpy(arr))
+        delta=time.time() - start
+        return res, delta
         
-    def _decompressData(self, byts):
-        return zfpy.decompress_numpy(lz4.frame.decompress(byts))
+    def _decompressData(self, byts,next_node):
+        start=time.time()
+        res=zfpy.decompress_numpy(lz4.frame.decompress(byts))
+        delta=time.time() - start
+        return res, delta
         
-    def _server(self, worker_state, to_send):
+    def _server(self, worker_state, to_send, time_sum):
     
         chunk_size = worker_state.chunk_size
         data_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -71,10 +78,11 @@ class WorkerNode:
         data_cli.setblocking(0)
 
         while True: 
-            inpt = self._decompressData(bytes(socket_recv(data_cli, chunk_size)))
+            inpt, delta = self._decompressData(bytes(socket_recv(data_cli, chunk_size)),worker_state.next_node)
             to_send.put(inpt)
-
-    def _client(self, worker_state, payload):
+            time_sum[0]+=delta
+            print("overhead till now: ", time_sum[0])
+    def _client(self, worker_state, payload, time_sum, infer_time):
     
         while not worker_state.next_node:
             time.sleep(5)  
@@ -86,9 +94,16 @@ class WorkerNode:
 
         while True:
             input_data = payload.get()
+            start=time.time()
             prediction = model.predict(input_data)
-            compressed_data = self._compressData(prediction)
+            infer_time[0]+=time.time()-start
+            print('inference time till now'+ str(infer_time[0]))
+            print(prediction.shape)
+            compressed_data, delta = self._compressData(prediction,worker_state.next_node)
+            time_sum[0]+=delta
+            print("overhead till now: ", time_sum[0])
             socket_send(compressed_data, client_socket, worker_state.chunk_size)
+            print('intermediate compression is:'+str(delta))
             
     def _msocket(self, worker_state):
     
@@ -118,14 +133,16 @@ class WorkerNode:
 
     def start(self):
     
+        time_sum = [0]
+        infer_time=[0]
         workerState = WorkerState(chunk_size = 512 * 1000)
         
         modelThread = Thread(target=self._msocket, args=(workerState,))
         weightsThread = Thread(target=self._wsocket, args=(workerState,))
         
         to_send = queue.Queue(5000) 
-        server = Thread(target=self._server, args=(workerState, to_send))
-        client = Thread(target=self._client, args=(workerState, to_send))
+        server = Thread(target=self._server, args=(workerState, to_send, time_sum))
+        client = Thread(target=self._client, args=(workerState, to_send, time_sum,infer_time))
         
         modelThread.start()
         weightsThread.start()
@@ -138,6 +155,8 @@ class WorkerNode:
         
         server.join()
         client.join()
+        
+    
 
 worker_node = WorkerNode()
 worker_node.start()

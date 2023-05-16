@@ -39,5 +39,7 @@ class WorkerState:
         print("Weights set")
         with self._lock:
             self._weights = w
+     
+
     
 
